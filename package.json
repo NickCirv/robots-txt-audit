@@ -1,0 +1,28 @@
+{
+  "name": "robots-txt-audit",
+  "version": "1.0.0",
+  "description": "Audit any site's robots.txt — catch mistakes, check AI crawler visibility, score quality.",
+  "main": "index.js",
+  "bin": {
+    "robots-txt-audit": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node index.js https://cirvgreen.com"
+  },
+  "keywords": [
+    "robots.txt",
+    "seo",
+    "crawler",
+    "ai-crawlers",
+    "gptbot",
+    "claudebot",
+    "cli",
+    "audit"
+  ],
+  "author": "NickCirv",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
