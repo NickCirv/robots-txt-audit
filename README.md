@@ -1,5 +1,10 @@
 # robots-txt-audit
 
+[![npm version](https://img.shields.io/npm/v/robots-txt-audit.svg)](https://www.npmjs.com/package/robots-txt-audit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D14-brightgreen.svg)](https://nodejs.org)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-blue.svg)](https://www.npmjs.com/package/robots-txt-audit)
+
 ```
   robots-txt-audit  by NickCirv
   ─────────────────────────────────────────
@@ -100,3 +105,19 @@ github.com/NickCirv
 ---
 
 MIT License
+
+## Contributing
+
+PRs welcome! If you have a funny idea or improvement:
+
+1. Fork the repo
+2. Create your feature branch (`git checkout -b feature/amazing-idea`)
+3. Commit your changes
+4. Push to the branch (`git push origin feature/amazing-idea`)
+5. Open a Pull Request
+
+Found a bug? [Open an issue](https://github.com/NickCirv/robots-txt-audit/issues).
+
+---
+
+If this made you mass-exhale through your nose, mass-hit that star button.
