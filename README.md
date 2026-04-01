@@ -1,3 +1,5 @@
+![Banner](banner.svg)
+
 # robots-txt-audit
 
 [![npm version](https://img.shields.io/npm/v/robots-txt-audit.svg)](https://www.npmjs.com/package/robots-txt-audit)
