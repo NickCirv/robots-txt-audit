@@ -1,11 +1,19 @@
-![Banner](banner.svg)
+![robots-txt-audit — audit any site's robots.txt, catch blocking mistakes and check AI crawler visibility](assets/banner.png)
 
-# robots-txt-audit
+<div align="center">
 
-[![npm version](https://img.shields.io/npm/v/robots-txt-audit.svg)](https://www.npmjs.com/package/robots-txt-audit)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D14-brightgreen.svg)](https://nodejs.org)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-blue.svg)](https://www.npmjs.com/package/robots-txt-audit)
+**Instantly audit any site's robots.txt — catch critical mistakes before they hurt your SEO or AI discoverability.**
+
+![license](https://img.shields.io/badge/license-MIT-blue?labelColor=0B0A09)
+![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen?labelColor=0B0A09)
+![node](https://img.shields.io/badge/node-%3E%3D14-brightgreen?labelColor=0B0A09)
+![crawlers](https://img.shields.io/badge/AI%20crawlers-12%20tracked-34D399?labelColor=0B0A09)
+
+</div>
+
+---
+
+A misconfigured `robots.txt` can silently block your entire site from search engines or lock out every AI crawler — and it's invisible until your traffic tanks. `robots-txt-audit` fetches, parses, and scores any site's robots.txt in seconds, with a dedicated AI crawler visibility section that shows exactly which bots can reach your content.
 
 ```
   robots-txt-audit  by NickCirv
@@ -34,49 +42,47 @@
   Critical issues found — immediate action needed.
 ```
 
-Zero-dependency Node.js CLI. Parses any site's `robots.txt` and tells you what you're accidentally blocking — including AI crawlers.
-
 ## Install
 
-```bash
-npx robots-txt-audit https://example.com
-```
-
-Or install globally:
+No install required — runs straight from GitHub with zero dependencies:
 
 ```bash
-npm install -g robots-txt-audit
-robots-txt-audit https://example.com
+npx github:NickCirv/robots-txt-audit https://example.com
 ```
 
 ## Usage
 
 ```bash
-# Full audit
-robots-txt-audit https://example.com
+# Full audit — issues + AI crawler visibility + quality score
+npx github:NickCirv/robots-txt-audit https://example.com
 
-# AI crawlers only
-robots-txt-audit https://example.com --ai
+# AI crawlers only — skip the general issues report
+npx github:NickCirv/robots-txt-audit https://example.com --ai
 ```
+
+| Flag | Description |
+|------|-------------|
+| `<url>` | Site to audit (required) — provide the domain, not the robots.txt path |
+| `--ai` | Show only the AI crawler visibility section |
 
 ## What it checks
 
-| Check | Level |
-|---|---|
-| Disallow: / (blocks everything) | CRITICAL |
-| Blocking CSS/JS/static assets | WARNING |
-| Blocking /wp-admin without admin-ajax.php | WARNING |
-| Missing robots.txt (404) | WARNING |
-| No Sitemap directive | SUGGESTION |
-| Duplicate rules | CLEANUP |
-| Crawl-delay directive | INFO |
+| Check | Severity |
+|-------|----------|
+| `Disallow: /` — blocks entire site for an agent | CRITICAL |
+| Blocking CSS / JS / static assets | WARNING |
+| Blocking `/wp-admin` without `Allow: /wp-admin/admin-ajax.php` | WARNING |
+| Missing `robots.txt` (HTTP 404) | WARNING |
+| No `Sitemap` directive | SUGGESTION |
+| Duplicate rules across blocks | CLEANUP |
+| `Crawl-delay` directive present | INFO |
 | Wildcard path patterns | INFO |
-| No Disallow rules (fully open) | INFO |
+| Agent block with no `Disallow` rules (fully open) | INFO |
 
-## AI Crawlers Tracked
+## AI crawlers tracked
 
-| Bot | Organization |
-|---|---|
+| Bot | Organisation |
+|-----|--------------|
 | GPTBot | OpenAI |
 | Google-Extended | Google AI |
 | ClaudeBot / anthropic-ai | Anthropic |
@@ -93,33 +99,21 @@ robots-txt-audit https://example.com --ai
 ## Scoring
 
 | Score | Meaning |
-|---|---|
-| 80-100 | Good — minor improvements possible |
-| 50-79 | Needs attention |
-| 0-49 | Critical issues — act now |
+|-------|---------|
+| 80–100 | Good — minor improvements possible |
+| 50–79 | Needs attention — review warnings |
+| 0–49 | Critical issues — act now |
 
-## You might also like
+Scoring deducts points per finding: CRITICAL −30, WARNING −10, CLEANUP −5, SUGGESTION −5.
 
-**Cirv Lens** (coming soon) — WordPress plugin for AI discoverability. Auto-generates `llms.txt`, optimises for AI crawlers, adds structured data for AI assistant citations.
+## What it is NOT
 
-github.com/NickCirv
-
----
-
-MIT License
-
-## Contributing
-
-PRs welcome! If you have a funny idea or improvement:
-
-1. Fork the repo
-2. Create your feature branch (`git checkout -b feature/amazing-idea`)
-3. Commit your changes
-4. Push to the branch (`git push origin feature/amazing-idea`)
-5. Open a Pull Request
-
-Found a bug? [Open an issue](https://github.com/NickCirv/robots-txt-audit/issues).
+- **Not a crawl simulator.** It parses directive syntax and checks common mistake patterns — it does not simulate a full Googlebot crawl or path-level matching beyond the flagged patterns.
+- **Not a fix tool.** It tells you exactly what's wrong and why; editing the `robots.txt` is up to you.
+- **Not a guarantee.** Some crawlers ignore `robots.txt` entirely. This tool audits the file, not crawler behaviour.
 
 ---
 
-If this made you mass-exhale through your nose, mass-hit that star button.
+<div align="center">
+<sub>Zero dependencies · Node 14+ · MIT · by <a href="https://github.com/NickCirv">NickCirv</a></sub>
+</div>
