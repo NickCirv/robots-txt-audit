@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node index.js https://cirvgreen.com"
+    "test": "node --test"
   },
   "keywords": [
     "robots.txt",
@@ -23,6 +23,6 @@
   "author": "NickCirv",
   "license": "MIT",
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=20"
   }
 }
