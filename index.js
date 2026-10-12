@@ -21,19 +21,23 @@ const C = {
   bgYellow: '\x1b[43m',
 };
 
+// One row per user-agent product token, so each token gets its own verdict.
 const AI_CRAWLERS = [
-  { name: 'GPTBot', org: 'OpenAI', agents: ['GPTBot'] },
-  { name: 'Google-Extended', org: 'Google AI', agents: ['Google-Extended'] },
-  { name: 'ClaudeBot', org: 'Anthropic', agents: ['ClaudeBot', 'anthropic-ai'] },
-  { name: 'CCBot', org: 'Common Crawl', agents: ['CCBot'] },
-  { name: 'Bytespider', org: 'TikTok/ByteDance', agents: ['Bytespider'] },
-  { name: 'FacebookBot', org: 'Meta', agents: ['FacebookBot'] },
-  { name: 'PerplexityBot', org: 'Perplexity', agents: ['PerplexityBot'] },
-  { name: 'YouBot', org: 'You.com', agents: ['YouBot'] },
-  { name: 'Applebot-Extended', org: 'Apple AI', agents: ['Applebot-Extended'] },
-  { name: 'Omgili', org: 'Webz.io', agents: ['Omgili', 'omgilibot'] },
-  { name: 'DiffBot', org: 'DiffBot', agents: ['DiffBot'] },
-  { name: 'Amazonbot', org: 'Amazon Alexa', agents: ['Amazonbot'] },
+  { token: 'GPTBot', org: 'OpenAI (training)' },
+  { token: 'ChatGPT-User', org: 'OpenAI (user-triggered fetch)' },
+  { token: 'ClaudeBot', org: 'Anthropic (training)' },
+  { token: 'Claude-Web', org: 'Anthropic (legacy)' },
+  { token: 'anthropic-ai', org: 'Anthropic (legacy)' },
+  { token: 'PerplexityBot', org: 'Perplexity' },
+  { token: 'Google-Extended', org: 'Google AI (Gemini training)' },
+  { token: 'CCBot', org: 'Common Crawl' },
+  { token: 'Bytespider', org: 'TikTok/ByteDance' },
+  { token: 'Amazonbot', org: 'Amazon' },
+  { token: 'FacebookBot', org: 'Meta' },
+  { token: 'Applebot-Extended', org: 'Apple AI' },
+  { token: 'YouBot', org: 'You.com' },
+  { token: 'Omgili', org: 'Webz.io' },
+  { token: 'DiffBot', org: 'DiffBot' },
 ];
 
 function fetch(url, redirects = 0) {
@@ -41,7 +45,10 @@ function fetch(url, redirects = 0) {
     if (redirects > 5) return reject(new Error('Too many redirects'));
     const parsed = new URL(url);
     const mod = parsed.protocol === 'https:' ? https : http;
-    const req = mod.get(url, { timeout: 10000 }, (res) => {
+    const req = mod.get(url, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'robots-txt-audit/1.1 (+https://github.com/NickCirv/robots-txt-audit)' },
+    }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const next = new URL(res.headers.location, url).toString();
         res.resume();
@@ -74,9 +81,6 @@ function parseRobots(text) {
     const value = line.slice(colonIdx + 1).trim();
 
     if (field === 'user-agent') {
-      if (current && current.agents.length && !blocks.includes(current)) {
-        // If same block continues (no rules yet), just add agent
-      }
       if (!current || current.rules.length > 0) {
         current = { agents: [], rules: [] };
         blocks.push(current);
@@ -96,39 +100,84 @@ function parseRobots(text) {
   return { blocks, sitemaps, crawlDelays };
 }
 
-function agentMatchesPattern(agent, pattern) {
-  return pattern === '*' || agent.toLowerCase() === pattern.toLowerCase();
+// --- RFC 9309 matching ------------------------------------------------------
+// https://www.rfc-editor.org/rfc/rfc9309
+
+// Canonicalize a path or rule pattern to a comparable octet string:
+// UTF-8 encode, then decode percent-escapes to raw octets, except %2F
+// (encoded slash), which stays encoded so /a%2Fb and /a/b compare differently.
+function canonicalPath(s) {
+  const octets = Buffer.from(s, 'utf8').toString('latin1');
+  return octets.replace(/%([0-9a-fA-F]{2})/g, (m, hex) =>
+    hex.toLowerCase() === '2f' ? '%2F' : String.fromCharCode(parseInt(hex, 16))
+  );
 }
 
-function isBlocked(agentName, blocks) {
-  // Find most specific matching block (exact match > wildcard)
-  let wildcardBlock = null;
-  let specificBlock = null;
+// Does a rule pattern match the path? Supports '*' (any octet sequence)
+// and a trailing '$' (end-of-path anchor). Patterns match from the start.
+function patternMatches(pattern, path) {
+  const anchored = pattern.endsWith('$');
+  if (anchored) pattern = pattern.slice(0, -1);
+  const parts = pattern.split('*');
 
-  for (const block of blocks) {
-    for (const agent of block.agents) {
-      if (agent === '*') wildcardBlock = block;
-      else if (agent.toLowerCase() === agentName.toLowerCase()) specificBlock = block;
-      else {
-        // partial match
-        for (const alias of [agentName]) {
-          if (agent.toLowerCase() === alias.toLowerCase()) specificBlock = block;
-        }
+  if (!path.startsWith(parts[0])) return false;
+  let pos = parts[0].length;
+
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+    if (anchored && i === parts.length - 1) {
+      // Final literal must sit at the end of the path, at or after pos.
+      return path.endsWith(part) && path.length - part.length >= pos;
+    }
+    const idx = path.indexOf(part, pos);
+    if (idx === -1) return false;
+    pos = idx + part.length;
+  }
+
+  if (anchored) return path.length === pos; // no wildcard: exact match
+  return true;
+}
+
+// RFC 9309 2.2.1: pick groups whose user-agent token matches exactly
+// (case-insensitive); merge all matching groups. Fall back to '*' groups.
+function groupsForAgent(agentToken, blocks) {
+  const wanted = agentToken.toLowerCase();
+  const specific = blocks.filter(b => b.agents.some(a => a.toLowerCase() === wanted));
+  if (specific.length > 0) return specific;
+  return blocks.filter(b => b.agents.includes('*'));
+}
+
+// RFC 9309 2.2.2: evaluate every rule in the merged group against the path;
+// the match with the most octets wins; on a tie, Allow wins. An empty rule
+// value is not a rule. No matching rule means crawling is allowed.
+function isBlocked(agentToken, blocks, path = '/') {
+  const groups = groupsForAgent(agentToken, blocks);
+  if (groups.length === 0) {
+    return { blocked: false, reason: 'no matching group (default allow)' };
+  }
+
+  const cpath = canonicalPath(path);
+  let best = null;
+
+  for (const group of groups) {
+    for (const rule of group.rules) {
+      if (!rule.path) continue;
+      const cpattern = canonicalPath(rule.path);
+      if (!patternMatches(cpattern, cpath)) continue;
+      const len = cpattern.length;
+      if (!best || len > best.len || (len === best.len && rule.type === 'allow' && best.type === 'disallow')) {
+        best = { type: rule.type, pattern: rule.path, len };
       }
     }
   }
 
-  const block = specificBlock || wildcardBlock;
-  if (!block) return { blocked: false, reason: 'no match (allowed)' };
-
-  const hasDisallowAll = block.rules.some(r => r.type === 'disallow' && r.path === '/');
-  const hasAnyDisallow = block.rules.some(r => r.type === 'disallow' && r.path);
-  const hasAllowAll = block.rules.some(r => r.type === 'allow' && r.path === '/');
-
-  if (hasDisallowAll && !hasAllowAll) return { blocked: true, reason: 'Disallow: /' };
-  if (!hasAnyDisallow) return { blocked: false, reason: 'no Disallow rules' };
-  return { blocked: false, reason: 'partial rules' };
+  if (!best) {
+    return { blocked: false, reason: `no rule matches ${path} (default allow)` };
+  }
+  const label = best.type === 'disallow' ? 'Disallow' : 'Allow';
+  return { blocked: best.type === 'disallow', reason: `${label}: ${best.pattern} (longest match)` };
 }
+// ---------------------------------------------------------------------------
 
 function analyze(parsed, url) {
   const issues = [];
@@ -247,51 +296,30 @@ function printIssues(issues) {
   }
 }
 
-function printAISection(blocks) {
+function aiVerdicts(blocks, path = '/') {
+  return AI_CRAWLERS.map((crawler) => {
+    const result = isBlocked(crawler.token, blocks, path);
+    return {
+      token: crawler.token,
+      org: crawler.org,
+      verdict: result.blocked ? 'BLOCKED' : 'ALLOWED',
+      reason: result.reason,
+    };
+  });
+}
+
+function printAISection(blocks, path = '/') {
   console.log('');
-  console.log(C.bold + '  AI Crawler Visibility' + C.reset);
+  console.log(C.bold + '  AI Crawler Visibility' + C.reset + C.dim + `  (path: ${path})` + C.reset);
   console.log(C.dim + '  ─────────────────────────────────────────' + C.reset);
 
-  for (const crawler of AI_CRAWLERS) {
-    let blocked = false;
-    let matchedAgent = '*';
-
-    // Check each alias
-    for (const alias of crawler.agents) {
-      const result = isBlocked(alias, blocks);
-      if (result.blocked) { blocked = true; matchedAgent = alias; break; }
-    }
-    // Also check wildcard
-    const wildcard = isBlocked('*', blocks);
-
-    // Determine via specific block or wildcard
-    let specificMatch = false;
-    for (const block of blocks) {
-      for (const agent of block.agents) {
-        for (const alias of crawler.agents) {
-          if (agent.toLowerCase() === alias.toLowerCase()) {
-            specificMatch = true;
-            const hasDisallowAll = block.rules.some(r => r.type === 'disallow' && r.path === '/');
-            const hasAnyDisallow = block.rules.some(r => r.type === 'disallow' && r.path);
-            const hasAllowAll = block.rules.some(r => r.type === 'allow' && r.path === '/');
-            if (hasDisallowAll && !hasAllowAll) blocked = true;
-            else if (hasAnyDisallow) blocked = false; // partial rules
-            else blocked = false;
-          }
-        }
-      }
-    }
-
-    if (!specificMatch) {
-      // Fall back to wildcard
-      blocked = wildcard.blocked;
-    }
-
+  for (const row of aiVerdicts(blocks, path)) {
+    const blocked = row.verdict === 'BLOCKED';
     const icon = blocked ? C.red + 'BLOCKED' + C.reset : C.green + 'ALLOWED' + C.reset;
     const symbol = blocked ? C.red + '✗' + C.reset : C.green + '✓' + C.reset;
-    const nameStr = C.white + crawler.name.padEnd(20) + C.reset;
-    const orgStr = C.dim + `(${crawler.org})` + C.reset;
-    console.log(`  ${symbol} ${nameStr} ${orgStr.padEnd(30)} ${icon}`);
+    const nameStr = C.white + row.token.padEnd(20) + C.reset;
+    const orgStr = C.dim + `(${row.org})` + C.reset;
+    console.log(`  ${symbol} ${nameStr} ${orgStr.padEnd(42)} ${icon}  ${C.dim}${row.reason}${C.reset}`);
   }
   console.log('');
 }
@@ -320,10 +348,13 @@ function printSitemaps(sitemaps) {
 async function main() {
   const args = process.argv.slice(2);
   const aiOnly = args.includes('--ai');
-  const urlArg = args.find(a => !a.startsWith('-'));
+  const asJson = args.includes('--json');
+  const pathIdx = args.indexOf('--path');
+  const checkPath = pathIdx !== -1 && args[pathIdx + 1] ? args[pathIdx + 1] : '/';
+  const urlArg = args.find((a, i) => !a.startsWith('-') && (pathIdx === -1 || i !== pathIdx + 1));
 
   if (!urlArg) {
-    console.error(C.red + 'Usage: robots-txt-audit <url> [--ai]' + C.reset);
+    console.error(C.red + 'Usage: robots-txt-audit <url> [--ai] [--json] [--path <path>]' + C.reset);
     console.error(C.dim + 'Example: robots-txt-audit https://example.com --ai' + C.reset);
     process.exit(1);
   }
@@ -337,33 +368,54 @@ async function main() {
   }
 
   const robotsUrl = `${base.protocol}//${base.host}/robots.txt`;
-  printBanner(robotsUrl);
+  if (!asJson) printBanner(robotsUrl);
 
   let res;
   try {
     res = await fetch(robotsUrl);
   } catch (err) {
-    console.error(C.red + '  Error fetching robots.txt: ' + err.message + C.reset);
+    if (asJson) {
+      console.log(JSON.stringify({ url: robotsUrl, error: err.message }));
+    } else {
+      console.error(C.red + '  Error fetching robots.txt: ' + err.message + C.reset);
+    }
     process.exit(1);
   }
 
   if (res.status === 404) {
+    if (asJson) {
+      console.log(JSON.stringify({ url: robotsUrl, status: 404, note: 'robots.txt not found; crawlers assume full access' }, null, 2));
+      process.exit(0);
+    }
     console.log(C.yellow + C.bold + '  WARNING' + C.reset + ' robots.txt not found (404) — search engines assume full access.');
     printScore(60);
     process.exit(0);
   }
 
   if (res.status !== 200) {
-    console.log(C.red + `  HTTP ${res.status} — could not retrieve robots.txt.` + C.reset);
+    if (asJson) {
+      console.log(JSON.stringify({ url: robotsUrl, status: res.status, error: 'could not retrieve robots.txt' }));
+    } else {
+      console.log(C.red + `  HTTP ${res.status} — could not retrieve robots.txt.` + C.reset);
+    }
     process.exit(1);
   }
 
   const parsed = parseRobots(res.body);
   const issues = analyze(parsed, robotsUrl);
   const score = scoreRobots(issues, parsed.sitemaps.length > 0);
+  const verdicts = aiVerdicts(parsed.blocks, checkPath);
+
+  if (asJson) {
+    const payload = aiOnly
+      ? { url: robotsUrl, status: res.status, path: checkPath, aiCrawlers: verdicts }
+      : { url: robotsUrl, status: res.status, path: checkPath, score, issues, sitemaps: parsed.sitemaps, aiCrawlers: verdicts };
+    console.log(JSON.stringify(payload, null, 2));
+    process.exit(0);
+  }
 
   if (aiOnly) {
-    printAISection(parsed.blocks);
+    printAISection(parsed.blocks, checkPath);
     process.exit(0);
   }
 
@@ -372,16 +424,27 @@ async function main() {
   console.log(C.dim + '  ─────────────────────────────────────────' + C.reset);
   printIssues(issues);
 
-  printAISection(parsed.blocks);
+  printAISection(parsed.blocks, checkPath);
   printSitemaps(parsed.sitemaps);
   printScore(score);
 
-  console.log(C.dim + '  Powered by Cirv Lens (coming soon) — AI discoverability for WordPress' + C.reset);
   console.log(C.dim + '  github.com/NickCirv' + C.reset);
   console.log('');
 }
 
-main().catch(err => {
-  console.error(C.red + 'Fatal: ' + err.message + C.reset);
-  process.exit(1);
-});
+module.exports = {
+  parseRobots,
+  canonicalPath,
+  patternMatches,
+  groupsForAgent,
+  isBlocked,
+  aiVerdicts,
+  AI_CRAWLERS,
+};
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error(C.red + 'Fatal: ' + err.message + C.reset);
+    process.exit(1);
+  });
+}
