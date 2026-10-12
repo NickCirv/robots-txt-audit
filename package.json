@@ -1,6 +1,6 @@
 {
   "name": "robots-txt-audit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Audit any site's robots.txt — catch mistakes, check AI crawler visibility, score quality.",
   "main": "index.js",
   "bin": {
